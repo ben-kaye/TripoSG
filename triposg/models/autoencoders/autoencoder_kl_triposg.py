@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Tuple, Union
+from collections.abc import Callable
 
 import numpy as np
 import torch
@@ -8,14 +8,16 @@ from diffusers.models.attention_processor import Attention, AttentionProcessor
 from diffusers.models.autoencoders.vae import DecoderOutput
 from diffusers.models.modeling_outputs import AutoencoderKLOutput
 from diffusers.models.modeling_utils import ModelMixin
-from diffusers.models.normalization import FP32LayerNorm, LayerNorm
+from diffusers.models.normalization import LayerNorm
 from diffusers.utils import logging
 from diffusers.utils.accelerate_utils import apply_forward_hook
-from einops import repeat
-# from torch_cluster import fps
-from tqdm import tqdm
+from torch_cluster import fps
 
-from ..attention_processor import FusedTripoSGAttnProcessor2_0, TripoSGAttnProcessor2_0, FlashTripoSGAttnProcessor2_0
+from ..attention_processor import (
+    FlashTripoSGAttnProcessor2_0,
+    FusedTripoSGAttnProcessor2_0,
+    TripoSGAttnProcessor2_0,
+)
 from ..embeddings import FrequencyPositionalEmbedding
 from ..transformers.triposg_transformer import DiTBlock
 from .vae import DiagonalGaussianDistribution
@@ -101,7 +103,7 @@ class TripoSGDecoder(nn.Module):
         super().__init__()
 
         if grad_type not in ["numerical", "analytical"]:
-            raise ValueError(f"grad_type must be one of ['numerical', 'analytical']")
+            raise ValueError("grad_type must be one of ['numerical', 'analytical']")
         self.grad_type = grad_type
         self.grad_interval = grad_interval
 
@@ -151,7 +153,7 @@ class TripoSGDecoder(nn.Module):
 
     def query_geometry(
         self,
-        model_fn: callable,
+        model_fn: Callable,
         queries: torch.Tensor,
         sample: torch.Tensor,
         grad: bool = False,
@@ -194,7 +196,7 @@ class TripoSGDecoder(nn.Module):
         self,
         sample: torch.Tensor,
         queries: torch.Tensor,
-        kv_cache: Optional[torch.Tensor] = None,
+        kv_cache: torch.Tensor | None = None,
     ):
         if kv_cache is None:
             hidden_states = sample
@@ -211,7 +213,7 @@ class TripoSGDecoder(nn.Module):
         logits, grad = self.query_geometry(
             query_fn, queries, kv_cache, grad=self.training
         )
-        logits = logits * -1 if not isinstance(logits, Tuple) else logits[0] * -1
+        logits = logits * -1 if not isinstance(logits, tuple) else logits[0] * -1
 
         return logits, kv_cache
 
@@ -314,7 +316,7 @@ class TripoSGVAEModel(ModelMixin, ConfigMixin):
 
     @property
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.attn_processors
-    def attn_processors(self) -> Dict[str, AttentionProcessor]:
+    def attn_processors(self) -> dict[str, AttentionProcessor]:
         r"""
         Returns:
             `dict` of attention processors: A dictionary containing all attention processors used in the model with
@@ -326,7 +328,7 @@ class TripoSGVAEModel(ModelMixin, ConfigMixin):
         def fn_recursive_add_processors(
             name: str,
             module: torch.nn.Module,
-            processors: Dict[str, AttentionProcessor],
+            processors: dict[str, AttentionProcessor],
         ):
             if hasattr(module, "get_processor"):
                 processors[f"{name}.processor"] = module.get_processor()
@@ -343,7 +345,7 @@ class TripoSGVAEModel(ModelMixin, ConfigMixin):
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attn_processor
     def set_attn_processor(
-        self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]
+        self, processor: AttentionProcessor | dict[str, AttentionProcessor]
     ):
         r"""
         Sets the attention processor to use to compute attention.
@@ -400,7 +402,7 @@ class TripoSGVAEModel(ModelMixin, ConfigMixin):
         self.use_slicing = False
 
     def _sample_features(
-        self, x: torch.Tensor, num_tokens: int = 2048, seed: Optional[int] = None
+        self, x: torch.Tensor, num_tokens: int = 2048, seed: int | None = None
     ):
         """
         Sample points from features of the input point cloud.
@@ -436,9 +438,7 @@ class TripoSGVAEModel(ModelMixin, ConfigMixin):
 
         return sampled_points
 
-    def _encode(
-        self, x: torch.Tensor, num_tokens: int = 2048, seed: Optional[int] = None
-    ):
+    def _encode(self, x: torch.Tensor, num_tokens: int = 2048, seed: int | None = None):
         position_channels = self.config.in_channels
         positions, features = x[..., :position_channels], x[..., position_channels:]
         x_kv = torch.cat([self.embedder(positions), features], dim=-1)
@@ -459,7 +459,7 @@ class TripoSGVAEModel(ModelMixin, ConfigMixin):
     @apply_forward_hook
     def encode(
         self, x: torch.Tensor, return_dict: bool = True, **kwargs
-    ) -> Union[AutoencoderKLOutput, Tuple[DiagonalGaussianDistribution]]:
+    ) -> AutoencoderKLOutput | tuple[DiagonalGaussianDistribution]:
         """
         Encode a batch of point features into latents.
         """
@@ -485,7 +485,7 @@ class TripoSGVAEModel(ModelMixin, ConfigMixin):
         num_chunks: int = 50000,
         to_cpu: bool = False,
         return_dict: bool = True,
-    ) -> Union[DecoderOutput, torch.Tensor]:
+    ) -> DecoderOutput | torch.Tensor:
         xyz_samples = sampled_points
 
         z = self.post_quant(z)
@@ -515,7 +515,7 @@ class TripoSGVAEModel(ModelMixin, ConfigMixin):
         sampled_points: torch.Tensor,
         return_dict: bool = True,
         **kwargs,
-    ) -> Union[DecoderOutput, torch.Tensor]:
+    ) -> DecoderOutput | torch.Tensor:
         if self.use_slicing and z.shape[0] > 1:
             decoded_slices = [
                 self._decode(z_slice, p_slice, **kwargs).sample

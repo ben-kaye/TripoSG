@@ -4,7 +4,6 @@ Adapted from https://github.com/huggingface/diffusers/blob/v0.30.3/src/diffusers
 
 import math
 from dataclasses import dataclass
-from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -166,9 +165,9 @@ class RectifiedFlowScheduler(SchedulerMixin, ConfigMixin):
     def set_timesteps(
         self,
         num_inference_steps: int = None,
-        device: Union[str, torch.device] = None,
-        sigmas: Optional[List[float]] = None,
-        mu: Optional[float] = None,
+        device: str | torch.device = None,
+        sigmas: list[float] | None = None,
+        mu: float | None = None,
     ):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
@@ -234,15 +233,15 @@ class RectifiedFlowScheduler(SchedulerMixin, ConfigMixin):
     def step(
         self,
         model_output: torch.FloatTensor,
-        timestep: Union[float, torch.FloatTensor],
+        timestep: float | torch.FloatTensor,
         sample: torch.FloatTensor,
         s_churn: float = 0.0,
         s_tmin: float = 0.0,
         s_tmax: float = float("inf"),
         s_noise: float = 1.0,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
         return_dict: bool = True,
-    ) -> Union[RectifiedFlowSchedulerOutput, Tuple]:
+    ) -> RectifiedFlowSchedulerOutput | tuple:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
         process from the learned model outputs (most often the predicted noise).

@@ -11,34 +11,17 @@ Two types of typing checking can be used:
 # Basic types
 from typing import (
     Any,
-    Callable,
-    Dict,
-    Iterable,
-    List,
-    Literal,
-    NamedTuple,
-    NewType,
-    Optional,
-    Sized,
-    Tuple,
-    Type,
     TypedDict,
-    TypeVar,
-    Union,
 )
 
 # Tensor dtype
 # for jaxtyping usage, see https://github.com/google/jaxtyping/blob/main/API.md
-from jaxtyping import Bool, Complex, Float, Inexact, Int, Integer, Num, Shaped, UInt
 
 # Config type
-from omegaconf import DictConfig, ListConfig
 
 # PyTorch Tensor type
-from torch import Tensor
 
 # Runtime type checking decorator
-from typeguard import typechecked as typechecker
 
 
 # Custom types
@@ -46,7 +29,7 @@ class FuncArgs(TypedDict):
     """Type for instantiating a function with keyword arguments"""
 
     name: str
-    kwargs: Dict[str, Any]
+    kwargs: dict[str, Any]
 
     @staticmethod
     def validate(variable):

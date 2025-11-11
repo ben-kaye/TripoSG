@@ -1,11 +1,9 @@
-from typing import Optional, Tuple
-
 import numpy as np
 import torch
 from diffusers.utils.torch_utils import randn_tensor
 
 
-class DiagonalGaussianDistribution(object):
+class DiagonalGaussianDistribution:
     def __init__(
         self,
         parameters: torch.Tensor,
@@ -24,7 +22,7 @@ class DiagonalGaussianDistribution(object):
                 self.mean, device=self.parameters.device, dtype=self.parameters.dtype
             )
 
-    def sample(self, generator: Optional[torch.Generator] = None) -> torch.Tensor:
+    def sample(self, generator: torch.Generator | None = None) -> torch.Tensor:
         # make sure sample is on the same device as the parameters and has same dtype
         sample = randn_tensor(
             self.mean.shape,
@@ -55,7 +53,7 @@ class DiagonalGaussianDistribution(object):
                 )
 
     def nll(
-        self, sample: torch.Tensor, dims: Tuple[int, ...] = [1, 2, 3]
+        self, sample: torch.Tensor, dims: tuple[int, ...] = [1, 2, 3]
     ) -> torch.Tensor:
         if self.deterministic:
             return torch.Tensor([0.0])
