@@ -118,6 +118,9 @@ def run_viewer(
     # Keep track of mesh handle and currently displayed sample index
     state: dict[str, object] = {"mesh": None, "current_index": None}
 
+    server.scene.world_axes.visible = True
+    server.scene.world_axes.axes_length = 1.0
+
     def _update_or_replace_markdown(handle, text: str):
         """Try to update markdown in-place; if not possible, replace and return new handle."""
         # common update patterns
@@ -150,17 +153,7 @@ def run_viewer(
 
         # --- mesh update (try in-place first) ---
         mesh = load_mesh_data(sample.glb_path)
-        try:
-            state["mesh"] = _update_mesh_handle(state.get("mesh"), mesh)
-        except Exception as e:
-            # last-resort: try to recreate scene or log but don't crash
-            print(f"Warning: failed to update mesh handle: {e}")
-            try:
-                if state.get("mesh") is not None:
-                    state["mesh"].remove()
-            except Exception:
-                pass
-            state["mesh"] = server.scene.add_mesh_trimesh(name="prediction", mesh=mesh)
+        state["mesh"] = _update_mesh_handle(state.get("mesh"), mesh)
 
         # --- image update ---
         image_data = load_image_rgba(sample.image_path)
@@ -190,18 +183,26 @@ def run_viewer(
     try:
         count = 0
         while True:
-            # count += 1
-            # if not count % 50:
-            #     # refresh ids
-            #     res = find_ids(data_loc.glb_dir, data_loc.image_dir, id_set)
+            count += 1
+            if not count % 30:
+                # refresh ids
+                res = find_ids(data_loc.glb_dir, data_loc.image_dir, id_set)
 
-            #     if res is not None:
-            #         logger.warning("Detected new or removed samples; updating viewer.")
-            #         samples = res
-            #         id_set = set(sample.name for sample in samples)
-            #         slider_handle.max = max(0, len(samples) - 1)
-            #         # reset to first sample
-            #         set_sample(0)
+                if res is not None:
+                    previous_index = state["current_index"] or 0
+                    logger.warning("Detected new or removed samples; updating viewer.")
+                    samples = res
+
+                    new_ids = [sample.name for sample in samples]
+                    id_set = set(new_ids)
+                    if samples[previous_index].name in new_ids:
+                        new_index = new_ids.index(samples[previous_index].name)
+                    else:
+                        new_index = 0
+
+                    slider_handle.max = max(0, len(samples) - 1)
+                    # reset to first samples
+                    set_sample(new_index)
 
             time.sleep(1)
     except KeyboardInterrupt:
