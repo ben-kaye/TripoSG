@@ -1,0 +1,12 @@
+data_dir: /scratch/shared/beegfs/kaye/2vs/toys4k_eval/renders
+output_dir: /work/kaye/2vs/toys4k_eval/triposg
+
+seed: 42
+faces: -1
+num_inference_steps: 50
+guidance_scale: 7.0
+device: cuda
+dtype: float16
+batch_size: 2
+triposg_weights_dir: /work/kaye/2vs/tripo_weights/TripoSG
+rmbg_weights_dir: /work/kaye/2vs/tripo_weights/RMBG-1.4
