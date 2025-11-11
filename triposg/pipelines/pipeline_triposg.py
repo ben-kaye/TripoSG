@@ -315,12 +315,18 @@ class TripoSGPipeline(DiffusionPipeline, TransformerDiffusionMixin):
             )
         else:
             self.vae.set_flash_decoder()
-            output = flash_extract_geometry(
-                latents,
-                self.vae,
-                bounds=bounds,
-                octree_depth=flash_octree_depth,
-            )
+            output = []
+
+            # flash extraction currently only supports batch size 1
+            for latent_vector in latents:
+                output.append(
+                    flash_extract_geometry(
+                        latent_vector[None],
+                        self.vae,
+                        bounds=bounds,
+                        octree_depth=flash_octree_depth,
+                    )[0]
+                )
         meshes = [
             trimesh.Trimesh(mesh_v_f[0].astype(np.float32), mesh_v_f[1])
             for mesh_v_f in output

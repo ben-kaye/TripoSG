@@ -437,6 +437,8 @@ def flash_extract_geometry(
     mini_grid_num: int = 4,
     **kwargs,
 ):
+    assert latents.shape[0] == 1, "only support batch size = 1"
+
     geo_decoder = vae.decoder
     device = latents.device
     dtype = latents.dtype
