@@ -1,4 +1,5 @@
-from typing import Callable, Optional
+from collections.abc import Callable
+from typing import Optional
 
 from .triposg_transformer import TripoSGDiTModel
 
@@ -6,7 +7,7 @@ from .triposg_transformer import TripoSGDiTModel
 def default_set_attn_proc_func(
     name: str,
     hidden_size: int,
-    cross_attention_dim: Optional[int],
+    cross_attention_dim: int | None,
     ori_attn_proc: object,
 ) -> object:
     return ori_attn_proc
@@ -17,9 +18,9 @@ def set_transformer_attn_processor(
     set_self_attn_proc_func: Callable = default_set_attn_proc_func,
     set_cross_attn_1_proc_func: Callable = default_set_attn_proc_func,
     set_cross_attn_2_proc_func: Callable = default_set_attn_proc_func,
-    set_self_attn_module_names: Optional[list[str]] = None,
-    set_cross_attn_1_module_names: Optional[list[str]] = None,
-    set_cross_attn_2_module_names: Optional[list[str]] = None,
+    set_self_attn_module_names: list[str] | None = None,
+    set_cross_attn_1_module_names: list[str] | None = None,
+    set_cross_attn_2_module_names: list[str] | None = None,
 ) -> None:
     do_set_processor = lambda name, module_names: (
         any([name.startswith(module_name) for module_name in module_names])

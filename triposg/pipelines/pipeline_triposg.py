@@ -1,6 +1,7 @@
 import inspect
 import math
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 import PIL
@@ -9,15 +10,15 @@ import torch
 import trimesh
 from diffusers.image_processor import PipelineImageInput
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline
-from diffusers.schedulers import FlowMatchEulerDiscreteScheduler  
+from diffusers.schedulers import FlowMatchEulerDiscreteScheduler
 from diffusers.utils import logging
 from diffusers.utils.torch_utils import randn_tensor
 from transformers import (
     BitImageProcessor,
     Dinov2Model,
 )
-from ..inference_utils import hierarchical_extract_geometry, flash_extract_geometry
 
+from ..inference_utils import flash_extract_geometry, hierarchical_extract_geometry
 from ..models.autoencoders import TripoSGVAEModel
 from ..models.transformers import TripoSGDiTModel
 from .pipeline_triposg_output import TripoSGPipelineOutput
@@ -29,10 +30,10 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
     scheduler,
-    num_inference_steps: Optional[int] = None,
-    device: Optional[Union[str, torch.device]] = None,
-    timesteps: Optional[List[int]] = None,
-    sigmas: Optional[List[float]] = None,
+    num_inference_steps: int | None = None,
+    device: str | torch.device | None = None,
+    timesteps: list[int] | None = None,
+    sigmas: list[float] | None = None,
     **kwargs,
 ):
     """
@@ -94,11 +95,11 @@ def retrieve_timesteps(
 
 class TripoSGPipeline(DiffusionPipeline, TransformerDiffusionMixin):
     """
-    Pipeline for image-to-3D generation.        
+    Pipeline for image-to-3D generation.
     """
 
     def __init__(
-        self,   
+        self,
         vae: TripoSGVAEModel,
         transformer: TripoSGDiTModel,
         scheduler: FlowMatchEulerDiscreteScheduler,
@@ -139,7 +140,9 @@ class TripoSGPipeline(DiffusionPipeline, TransformerDiffusionMixin):
         dtype = next(self.image_encoder_dinov2.parameters()).dtype
 
         if not isinstance(image, torch.Tensor):
-            image = self.feature_extractor_dinov2(image, return_tensors="pt").pixel_values
+            image = self.feature_extractor_dinov2(
+                image, return_tensors="pt"
+            ).pixel_values
 
         image = image.to(device=device, dtype=dtype)
         image_embeds = self.image_encoder_dinov2(image).last_hidden_state
@@ -156,7 +159,7 @@ class TripoSGPipeline(DiffusionPipeline, TransformerDiffusionMixin):
         dtype,
         device,
         generator,
-        latents: Optional[torch.Tensor] = None,
+        latents: torch.Tensor | None = None,
     ):
         if latents is not None:
             return latents.to(device=device, dtype=dtype)
@@ -173,29 +176,37 @@ class TripoSGPipeline(DiffusionPipeline, TransformerDiffusionMixin):
 
         return latents
 
-
     @torch.no_grad()
     def __call__(
         self,
         image: PipelineImageInput,
         num_inference_steps: int = 50,
         num_tokens: int = 2048,
-        timesteps: List[int] = None,
+        timesteps: list[int] | None = None,
         guidance_scale: float = 7.0,
         num_shapes_per_prompt: int = 1,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.FloatTensor] = None,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
-        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
-        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
-        bounds: Union[Tuple[float], List[float], float] = (-1.005, -1.005, -1.005, 1.005, 1.005, 1.005),
-        dense_octree_depth: int = 8, 
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.FloatTensor | None = None,
+        attention_kwargs: dict[str, Any] | None = None,
+        callback_on_step_end: Callable[[int, int, dict], None] | None = None,
+        callback_on_step_end_tensor_inputs: list[str] | None = None,
+        bounds: tuple[float] | list[float] | float = (
+            -1.005,
+            -1.005,
+            -1.005,
+            1.005,
+            1.005,
+            1.005,
+        ),
+        dense_octree_depth: int = 8,
         hierarchical_octree_depth: int = 9,
         flash_octree_depth: int = 9,
         use_flash_decoder: bool = True,
         return_dict: bool = True,
     ):
         # 1. Define call parameters
+        if callback_on_step_end_tensor_inputs is None:
+            callback_on_step_end_tensor_inputs = ["latents"]
         self._guidance_scale = guidance_scale
         self._attention_kwargs = attention_kwargs
 
@@ -243,7 +254,6 @@ class TripoSGPipeline(DiffusionPipeline, TransformerDiffusionMixin):
         # 6. Denoising loop
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
-
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = (
                     torch.cat([latents] * 2)
@@ -293,7 +303,6 @@ class TripoSGPipeline(DiffusionPipeline, TransformerDiffusionMixin):
                 ):
                     progress_bar.update()
 
-
         # 7. decoder mesh
         if not use_flash_decoder:
             geometric_func = lambda x: self.vae.decode(latents, sampled_points=x).sample
@@ -312,8 +321,11 @@ class TripoSGPipeline(DiffusionPipeline, TransformerDiffusionMixin):
                 bounds=bounds,
                 octree_depth=flash_octree_depth,
             )
-        meshes = [trimesh.Trimesh(mesh_v_f[0].astype(np.float32), mesh_v_f[1]) for mesh_v_f in output]
-        
+        meshes = [
+            trimesh.Trimesh(mesh_v_f[0].astype(np.float32), mesh_v_f[1])
+            for mesh_v_f in output
+        ]
+
         # Offload all models
         self.maybe_free_model_hooks()
 
@@ -321,4 +333,3 @@ class TripoSGPipeline(DiffusionPipeline, TransformerDiffusionMixin):
             return (output, meshes)
 
         return TripoSGPipelineOutput(samples=output, meshes=meshes)
-

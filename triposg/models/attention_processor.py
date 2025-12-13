@@ -1,4 +1,5 @@
-from typing import Callable, List, Optional, Tuple, Union
+from collections.abc import Callable
+from typing import List, Optional, Tuple, Union
 
 import torch
 import torch.nn.functional as F
@@ -6,7 +7,6 @@ from diffusers.models.attention_processor import Attention
 from diffusers.models.embeddings import apply_rotary_emb
 from diffusers.utils import logging
 from einops import rearrange
-
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -47,13 +47,15 @@ class FlashTripoSGAttnProcessor2_0:
             idx, counts = self.topk
             start = 0
             outs = []
-            for grid_coord, count in zip(idx, counts):
+            for _grid_coord, count in zip(idx, counts, strict=False):
                 end = start + count
                 q_chunk = q[:, :, start:end, :]
                 q1 = q_chunk[:, :, ::50, :]
                 sim = q1 @ k.transpose(-1, -2)
                 sim = torch.mean(sim, -2)
-                topk_ind = torch.topk(sim, dim=-1, k=topk).indices.squeeze(-2).unsqueeze(-1)
+                topk_ind = (
+                    torch.topk(sim, dim=-1, k=topk).indices.squeeze(-2).unsqueeze(-1)
+                )
                 topk_ind = topk_ind.expand(-1, -1, -1, v.shape[-1])
                 v0 = torch.gather(v, dim=-2, index=topk_ind)
                 k0 = torch.gather(k, dim=-2, index=topk_ind)
@@ -68,10 +70,10 @@ class FlashTripoSGAttnProcessor2_0:
         self,
         attn: Attention,
         hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        temb: Optional[torch.Tensor] = None,
-        image_rotary_emb: Optional[torch.Tensor] = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        temb: torch.Tensor | None = None,
+        image_rotary_emb: torch.Tensor | None = None,
         **kwargs,
     ) -> torch.Tensor:
         residual = hidden_states
@@ -151,7 +153,15 @@ class FlashTripoSGAttnProcessor2_0:
                 key = apply_rotary_emb(key, image_rotary_emb)
 
         # flashvdm topk
-        hidden_states = self.qkv(attn, query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False)   
+        hidden_states = self.qkv(
+            attn,
+            query,
+            key,
+            value,
+            attn_mask=attention_mask,
+            dropout_p=0.0,
+            is_causal=False,
+        )
 
         hidden_states = hidden_states.transpose(1, 2).reshape(
             batch_size, -1, attn.heads * head_dim
@@ -175,6 +185,7 @@ class FlashTripoSGAttnProcessor2_0:
 
         return hidden_states
 
+
 class TripoSGAttnProcessor2_0:
     r"""
     Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0). This is
@@ -191,10 +202,10 @@ class TripoSGAttnProcessor2_0:
         self,
         attn: Attention,
         hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        temb: Optional[torch.Tensor] = None,
-        image_rotary_emb: Optional[torch.Tensor] = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        temb: torch.Tensor | None = None,
+        image_rotary_emb: torch.Tensor | None = None,
     ) -> torch.Tensor:
         residual = hidden_states
         if attn.spatial_norm is not None:
@@ -318,10 +329,10 @@ class FusedTripoSGAttnProcessor2_0:
         self,
         attn: Attention,
         hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        temb: Optional[torch.Tensor] = None,
-        image_rotary_emb: Optional[torch.Tensor] = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        temb: torch.Tensor | None = None,
+        image_rotary_emb: torch.Tensor | None = None,
     ) -> torch.Tensor:
         residual = hidden_states
         if attn.spatial_norm is not None:

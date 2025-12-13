@@ -9,22 +9,10 @@ Two types of typing checking can be used:
 """
 
 # Basic types
+from collections.abc import Callable, Iterable, Sized
 from typing import (
     Any,
-    Callable,
-    Dict,
-    Iterable,
-    List,
-    Literal,
-    NamedTuple,
-    NewType,
-    Optional,
-    Sized,
-    Tuple,
-    Type,
     TypedDict,
-    TypeVar,
-    Union,
 )
 
 # Tensor dtype
@@ -46,7 +34,7 @@ class FuncArgs(TypedDict):
     """Type for instantiating a function with keyword arguments"""
 
     name: str
-    kwargs: Dict[str, Any]
+    kwargs: dict[str, Any]
 
     @staticmethod
     def validate(variable):

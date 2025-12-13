@@ -1,12 +1,12 @@
 import argparse
+
 import numpy as np
 import torch
 import trimesh
+from huggingface_hub import snapshot_download
 
 from triposg.inference_utils import hierarchical_extract_geometry
 from triposg.models.autoencoders import TripoSGVAEModel
-from huggingface_hub import snapshot_download
-
 
 
 def load_surface(data_path, num_pc=204800):
@@ -40,12 +40,10 @@ if __name__ == "__main__":
     ).to(device, dtype=dtype)
 
     # load surface from sdf and encode
-    surface = load_surface(
-        args.surface_input, num_pc=204800
-    ).to(device, dtype=dtype)
+    surface = load_surface(args.surface_input, num_pc=204800).to(device, dtype=dtype)
     sample = vae.encode(surface).latent_dist.sample()
-    
-    # vae infer 
+
+    # vae infer
     with torch.no_grad():
         geometric_func = lambda x: vae.decode(sample, sampled_points=x).sample
         output = hierarchical_extract_geometry(
@@ -55,7 +53,9 @@ if __name__ == "__main__":
             dense_octree_depth=8,
             hierarchical_octree_depth=9,
         )
-        meshes = [trimesh.Trimesh(mesh_v_f[0].astype(np.float32), mesh_v_f[1]) for mesh_v_f in output]
+        meshes = [
+            trimesh.Trimesh(mesh_v_f[0].astype(np.float32), mesh_v_f[1])
+            for mesh_v_f in output
+        ]
 
     meshes[0].export("test_vae.glb")
-

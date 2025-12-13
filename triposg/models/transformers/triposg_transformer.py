@@ -163,20 +163,20 @@ class DiTBlock(nn.Module):
         dim: int,
         num_attention_heads: int,
         use_self_attention: bool = True,
-        self_attention_norm_type: Optional[str] = None, 
-        use_cross_attention: bool = True, # ada layer norm
-        cross_attention_dim: Optional[int] = None,
-        cross_attention_norm_type: Optional[str] = "fp32_layer_norm",
+        self_attention_norm_type: str | None = None,
+        use_cross_attention: bool = True,  # ada layer norm
+        cross_attention_dim: int | None = None,
+        cross_attention_norm_type: str | None = "fp32_layer_norm",
         use_cross_attention_2: bool = False,
-        cross_attention_2_dim: Optional[int] = None,
-        cross_attention_2_norm_type: Optional[str] = None,
+        cross_attention_2_dim: int | None = None,
+        cross_attention_2_norm_type: str | None = None,
         dropout=0.0,
         activation_fn: str = "gelu",
         norm_type: str = "fp32_layer_norm",  # TODO
         norm_elementwise_affine: bool = True,
         norm_eps: float = 1e-5,
         final_dropout: bool = False,
-        ff_inner_dim: Optional[int] = None,  # int(dim * 4) if None
+        ff_inner_dim: int | None = None,  # int(dim * 4) if None
         ff_bias: bool = True,
         skip: bool = False,
         skip_concat_front: bool = False,  # [x, skip] or [skip, x]
@@ -280,7 +280,7 @@ class DiTBlock(nn.Module):
         self.attn2.processor = self.flash_processor
 
     # Copied from diffusers.models.attention.BasicTransformerBlock.set_chunk_feed_forward
-    def set_chunk_feed_forward(self, chunk_size: Optional[int], dim: int = 0):
+    def set_chunk_feed_forward(self, chunk_size: int | None, dim: int = 0):
         # Sets chunk feed-forward
         self._chunk_size = chunk_size
         self._chunk_dim = dim
@@ -288,15 +288,17 @@ class DiTBlock(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        encoder_hidden_states_2: Optional[torch.Tensor] = None,
-        temb: Optional[torch.Tensor] = None,
-        image_rotary_emb: Optional[torch.Tensor] = None,
-        skip: Optional[torch.Tensor] = None,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        encoder_hidden_states_2: torch.Tensor | None = None,
+        temb: torch.Tensor | None = None,
+        image_rotary_emb: torch.Tensor | None = None,
+        skip: torch.Tensor | None = None,
+        attention_kwargs: dict[str, Any] | None = None,
     ) -> torch.Tensor:
         # Prepare attention kwargs
-        attention_kwargs = attention_kwargs.copy() if attention_kwargs is not None else {}
+        attention_kwargs = (
+            attention_kwargs.copy() if attention_kwargs is not None else {}
+        )
         cross_attention_scale = attention_kwargs.pop("cross_attention_scale", 1.0)
         cross_attention_2_scale = attention_kwargs.pop("cross_attention_2_scale", 1.0)
 
@@ -339,21 +341,27 @@ class DiTBlock(nn.Module):
                         encoder_hidden_states=encoder_hidden_states,
                         image_rotary_emb=image_rotary_emb,
                         **attention_kwargs,
-                    ) * cross_attention_scale
+                    )
+                    * cross_attention_scale
                     + self.attn2_2(
                         self.norm2_2(hidden_states),
                         encoder_hidden_states=encoder_hidden_states_2,
                         image_rotary_emb=image_rotary_emb,
                         **attention_kwargs,
-                    ) * cross_attention_2_scale
+                    )
+                    * cross_attention_2_scale
                 )
             else:
-                hidden_states = hidden_states + self.attn2(
-                    self.norm2(hidden_states),
-                    encoder_hidden_states=encoder_hidden_states,
-                    image_rotary_emb=image_rotary_emb,
-                    **attention_kwargs,
-                ) * cross_attention_scale
+                hidden_states = (
+                    hidden_states
+                    + self.attn2(
+                        self.norm2(hidden_states),
+                        encoder_hidden_states=encoder_hidden_states,
+                        image_rotary_emb=image_rotary_emb,
+                        **attention_kwargs,
+                    )
+                    * cross_attention_scale
+                )
 
         # FFN Layer ### TODO: switch norm2 and norm3 in the state dict
         mlp_inputs = self.norm3(hidden_states)
@@ -417,7 +425,7 @@ class TripoSGDiTModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         num_layers: int = 21,
         cross_attention_dim: int = 1024,
         use_cross_attention_2: bool = False,
-        cross_attention_2_dim: Optional[int] = None
+        cross_attention_2_dim: int | None = None,
     ):
         super().__init__()
         self.out_channels = in_channels
@@ -479,7 +487,7 @@ class TripoSGDiTModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         flip_sin_to_cos: bool,
         freq_shift: float,
         time_embedding_dim: int,
-    ) -> Tuple[int, int]:
+    ) -> tuple[int, int]:
         if time_embedding_type == "fourier":
             time_embed_dim = time_embedding_dim or inner_dim * 2
             if time_embed_dim % 2 != 0:
@@ -549,7 +557,7 @@ class TripoSGDiTModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
 
     @property
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.attn_processors
-    def attn_processors(self) -> Dict[str, AttentionProcessor]:
+    def attn_processors(self) -> dict[str, AttentionProcessor]:
         r"""
         Returns:
             `dict` of attention processors: A dictionary containing all attention processors used in the model with
@@ -561,7 +569,7 @@ class TripoSGDiTModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         def fn_recursive_add_processors(
             name: str,
             module: torch.nn.Module,
-            processors: Dict[str, AttentionProcessor],
+            processors: dict[str, AttentionProcessor],
         ):
             if hasattr(module, "get_processor"):
                 processors[f"{name}.processor"] = module.get_processor()
@@ -578,7 +586,7 @@ class TripoSGDiTModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attn_processor
     def set_attn_processor(
-        self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]
+        self, processor: AttentionProcessor | dict[str, AttentionProcessor]
     ):
         r"""
         Sets the attention processor to use to compute attention.
@@ -621,12 +629,12 @@ class TripoSGDiTModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
 
     def forward(
         self,
-        hidden_states: Optional[torch.Tensor],
-        timestep: Union[int, float, torch.LongTensor],
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        encoder_hidden_states_2: Optional[torch.Tensor] = None,
-        image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
+        hidden_states: torch.Tensor | None,
+        timestep: int | float | torch.LongTensor,
+        encoder_hidden_states: torch.Tensor | None = None,
+        encoder_hidden_states_2: torch.Tensor | None = None,
+        image_rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None,
+        attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
     ):
         """
@@ -684,7 +692,7 @@ class TripoSGDiTModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
 
                     return custom_forward
 
-                ckpt_kwargs: Dict[str, Any] = (
+                ckpt_kwargs: dict[str, Any] = (
                     {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
                 )
                 hidden_states = torch.utils.checkpoint.checkpoint(
@@ -728,7 +736,7 @@ class TripoSGDiTModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
 
     # Copied from diffusers.models.unets.unet_3d_condition.UNet3DConditionModel.enable_forward_chunking
     def enable_forward_chunking(
-        self, chunk_size: Optional[int] = None, dim: int = 0
+        self, chunk_size: int | None = None, dim: int = 0
     ) -> None:
         """
         Sets the attention processor to use [feed forward

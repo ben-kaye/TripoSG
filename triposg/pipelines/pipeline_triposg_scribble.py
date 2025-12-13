@@ -1,6 +1,7 @@
 import inspect
 import math
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 import PIL
@@ -14,12 +15,12 @@ from diffusers.utils import logging
 from diffusers.utils.torch_utils import randn_tensor
 from transformers import (
     BitImageProcessor,
-    CLIPTokenizer,
     CLIPTextModelWithProjection,
+    CLIPTokenizer,
     Dinov2Model,
 )
-from ..inference_utils import hierarchical_extract_geometry, flash_extract_geometry
 
+from ..inference_utils import flash_extract_geometry, hierarchical_extract_geometry
 from ..models.autoencoders import TripoSGVAEModel
 from ..models.transformers import TripoSGDiTModel
 from .pipeline_triposg_output import TripoSGPipelineOutput
@@ -31,10 +32,10 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
     scheduler,
-    num_inference_steps: Optional[int] = None,
-    device: Optional[Union[str, torch.device]] = None,
-    timesteps: Optional[List[int]] = None,
-    sigmas: Optional[List[float]] = None,
+    num_inference_steps: int | None = None,
+    device: str | torch.device | None = None,
+    timesteps: list[int] | None = None,
+    sigmas: list[float] | None = None,
     **kwargs,
 ):
     """
@@ -96,7 +97,7 @@ def retrieve_timesteps(
 
 class TripoSGScribblePipeline(DiffusionPipeline, TransformerDiffusionMixin):
     """
-    Pipeline for (scribble and text)-to-3D generation.   
+    Pipeline for (scribble and text)-to-3D generation.
     """
 
     def __init__(
@@ -118,7 +119,7 @@ class TripoSGScribblePipeline(DiffusionPipeline, TransformerDiffusionMixin):
             tokenizer=tokenizer,
             text_encoder=text_encoder,
             image_encoder_dinov2=image_encoder_dinov2,
-            feature_extractor_dinov2=feature_extractor_dinov2
+            feature_extractor_dinov2=feature_extractor_dinov2,
         )
 
     @property
@@ -136,11 +137,15 @@ class TripoSGScribblePipeline(DiffusionPipeline, TransformerDiffusionMixin):
     @property
     def attention_kwargs(self):
         return self._attention_kwargs
-    
+
     def encode_text(self, prompt, device, num_shapes_per_prompt):
         input_ids = self.tokenizer(
-            [prompt], max_length=self.tokenizer.model_max_length, padding="max_length", truncation=True, return_tensors="pt"
-        )['input_ids'].to(device)
+            [prompt],
+            max_length=self.tokenizer.model_max_length,
+            padding="max_length",
+            truncation=True,
+            return_tensors="pt",
+        )["input_ids"].to(device)
         text_embeds = self.text_encoder(input_ids).last_hidden_state
         text_embeds = text_embeds.repeat_interleave(num_shapes_per_prompt, dim=0)
         uncond_text_embeds = torch.zeros_like(text_embeds)
@@ -150,7 +155,9 @@ class TripoSGScribblePipeline(DiffusionPipeline, TransformerDiffusionMixin):
         dtype = next(self.image_encoder_dinov2.parameters()).dtype
 
         if not isinstance(image, torch.Tensor):
-            image = self.feature_extractor_dinov2(image, return_tensors="pt").pixel_values
+            image = self.feature_extractor_dinov2(
+                image, return_tensors="pt"
+            ).pixel_values
 
         image = image.to(device=device, dtype=dtype)
         image_embeds = self.image_encoder_dinov2(image).last_hidden_state
@@ -167,11 +174,11 @@ class TripoSGScribblePipeline(DiffusionPipeline, TransformerDiffusionMixin):
         dtype,
         device,
         generator,
-        latents: Optional[torch.Tensor] = None,
+        latents: torch.Tensor | None = None,
     ):
         if latents is not None:
             return latents.to(device=device, dtype=dtype)
-        
+
         shape = (batch_size, num_tokens, num_channels_latents)
 
         if isinstance(generator, list) and len(generator) != batch_size:
@@ -191,21 +198,30 @@ class TripoSGScribblePipeline(DiffusionPipeline, TransformerDiffusionMixin):
         prompt: str,
         num_tokens: int = 512,
         num_inference_steps: int = 50,
-        timesteps: List[int] = None,
+        timesteps: list[int] | None = None,
         guidance_scale: float = 7.0,
         num_shapes_per_prompt: int = 1,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.FloatTensor] = None,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
-        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
-        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
-        bounds: Union[Tuple[float], List[float], float] = (-1.005, -1.005, -1.005, 1.005, 1.005, 1.005),
-        dense_octree_depth: int = 8, 
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.FloatTensor | None = None,
+        attention_kwargs: dict[str, Any] | None = None,
+        callback_on_step_end: Callable[[int, int, dict], None] | None = None,
+        callback_on_step_end_tensor_inputs: list[str] | None = None,
+        bounds: tuple[float] | list[float] | float = (
+            -1.005,
+            -1.005,
+            -1.005,
+            1.005,
+            1.005,
+            1.005,
+        ),
+        dense_octree_depth: int = 8,
         hierarchical_octree_depth: int = 9,
         flash_octree_depth: int = 9,
         use_flash_decoder: bool = True,
         return_dict: bool = True,
     ):
+        if callback_on_step_end_tensor_inputs is None:
+            callback_on_step_end_tensor_inputs = ["latents"]
         self._guidance_scale = guidance_scale
         self._attention_kwargs = attention_kwargs
 
@@ -228,7 +244,7 @@ class TripoSGScribblePipeline(DiffusionPipeline, TransformerDiffusionMixin):
 
         image_embeds, negative_image_embeds = self.encode_image(
             image, device, num_shapes_per_prompt
-        )        
+        )
 
         if self.do_classifier_free_guidance:
             text_embeds = torch.cat([negative_text_embeds, text_embeds], dim=0)
@@ -258,7 +274,6 @@ class TripoSGScribblePipeline(DiffusionPipeline, TransformerDiffusionMixin):
         # 6. Denoising loop
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
-
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = (
                     torch.cat([latents] * 2)
@@ -327,8 +342,11 @@ class TripoSGScribblePipeline(DiffusionPipeline, TransformerDiffusionMixin):
                 bounds=bounds,
                 octree_depth=flash_octree_depth,
             )
-        meshes = [trimesh.Trimesh(mesh_v_f[0].astype(np.float32), mesh_v_f[1]) for mesh_v_f in output]
-        
+        meshes = [
+            trimesh.Trimesh(mesh_v_f[0].astype(np.float32), mesh_v_f[1])
+            for mesh_v_f in output
+        ]
+
         # Offload all models
         self.maybe_free_model_hooks()
 

@@ -14,4 +14,4 @@ class TripoSGPipelineOutput(BaseOutput):
     """
 
     samples: torch.Tensor
-    meshes: List[trimesh.Trimesh]
+    meshes: list[trimesh.Trimesh]
