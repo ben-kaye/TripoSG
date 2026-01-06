@@ -3,10 +3,13 @@ name = "triposg"
 version = "0.0.1"
 requires-python = ">= 3.10"
 
+[build-system]
+requires = ["setuptools>=61.0.0"]
+build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 # Map the project root ("") to your custom source location
-package-dir = {"" = "."}
+package-dir = {"" = "src"}
 packages = ["triposg"]
 
 [tool.ruff]
