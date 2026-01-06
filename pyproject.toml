@@ -1,3 +1,14 @@
+[project]
+name = "triposg"
+version = "0.0.1"
+requires-python = ">= 3.10"
+
+
+[tool.setuptools]
+# Map the project root ("") to your custom source location
+package-dir = {"" = "."}
+packages = ["triposg"]
+
 [tool.ruff]
 target-version = "py312"
 
