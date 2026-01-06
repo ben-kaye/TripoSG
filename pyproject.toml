@@ -10,7 +10,9 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools]
 # Map the project root ("") to your custom source location
 package-dir = {"" = "src"}
-packages = ["triposg"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [tool.ruff]
 target-version = "py312"
